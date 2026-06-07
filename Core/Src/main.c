@@ -57,8 +57,8 @@
 // 1024 samples * 2 channels = 2048 int16_t per buffer
 #define AUDIO_BUFFER_SAMPLES   2048   // per buffer (stereo: 1024 frames)
 #define WAV_HEADER_SIZE        44     // skip standard PCM WAV header
-
-
+#define MAX_WAV_FILES 20
+int current_song_index = 0;
 
 
 
@@ -160,13 +160,23 @@ int main(void)
       printf("SD mount failed\r\n");
       Error_Handler();
   }
+  char my_wav_files[MAX_WAV_FILES][MAX_FILENAME_LEN];
+  int total_files = SD_GetWavFiles("/", my_wav_files, MAX_WAV_FILES);
+  printf("\r\n--- Playing Files ---\r\n");
+  Audio_Play(my_wav_files[0]);
 
-  // Open WAV and skip header
+  
+
+
+  
+
+   /*  Open WAV and skip header
   if (Audio_Play("AUDIO441.WAV") != HAL_OK) {
       Error_Handler();
-  }
+  }    */
 
  tlv3100_unmute(&hi2c3);
+
 
 
   /* USER CODE END 2 */
@@ -190,11 +200,28 @@ int main(void)
 
     // Optional: stop SAI cleanly when file ends
     if (!PlaybackActive) {
+        
+        // 1. Stop the current DMA transfer and close the file
         HAL_SAI_DMAStop(&hsai_BlockA1);
-        f_close(&WavFile);
-        printf("Playback done\r\n");
-        tlv3100_mute(&hi2c3);
-        while (1);  // halt or loop/reload next file here
+        if (FileIsOpen) {
+            f_close(&WavFile);
+            FileIsOpen = 0;
+        }
+
+        // 2. Advance to the next song
+        current_song_index++;
+        
+        // Wrap around to the start of the playlist if we hit the end
+        if (current_song_index >= total_files) {
+            current_song_index = 0; 
+        }
+
+        printf("\r\n--- Track Ended. Auto-Playing Next ---\r\n");
+        
+        // 3. Play the next file in the array
+        if (total_files > 0) {
+            Audio_Play(my_wav_files[current_song_index]);
+        }
     }
   }
   /* USER CODE END 3 */
