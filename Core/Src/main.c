@@ -31,7 +31,7 @@
 #include "string.h"
 #include "stdio.h"
 #include "tlv3100.h"
-
+#include "sdcard_functions.h"  
 
 /* USER CODE END Includes */
 
@@ -58,10 +58,6 @@
 #define AUDIO_BUFFER_SAMPLES   2048   // per buffer (stereo: 1024 frames)
 #define WAV_HEADER_SIZE        44     // skip standard PCM WAV header
 
-static int16_t AudioBuffer[2][AUDIO_BUFFER_SAMPLES];
-static volatile uint8_t BufferReady[2] = {0, 0};  // set by ISR, cleared by main
-static FIL WavFile;
-static volatile uint8_t PlaybackActive = 0;
 
 
 
@@ -75,8 +71,7 @@ void SystemClock_Config(void);
 
 
 // Forward declarations
-static HAL_StatusTypeDef Audio_OpenFile(const char *path);
-static void Audio_FillBuffer(uint8_t bufIdx);
+
 
 int _write(int file, char *ptr, int len) {
     // 1: stdout, 2: stderr
@@ -110,7 +105,7 @@ const int16_t SineWave_Buffer[SINE_SAMPLES * 2] = {
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static uint8_t FileIsOpen = 0;   // <-- add this
+
 
 /* USER CODE END 0 */
 
@@ -167,22 +162,11 @@ int main(void)
   }
 
   // Open WAV and skip header
-  if (Audio_OpenFile("AUDIO441.WAV") != HAL_OK) {
+  if (Audio_Play("AUDIO441.WAV") != HAL_OK) {
       Error_Handler();
   }
 
-  // Pre-fill both buffers before starting DMA
-  Audio_FillBuffer(0);
-  Audio_FillBuffer(1);
-  PlaybackActive = 1;
-
-  // Start circular DMA across the two buffers back-to-back
-  // HAL sees this as one flat buffer of size AUDIO_BUFFER_SAMPLES*2
-  // Half-complete fires at buffer[0] boundary, complete fires at buffer[1] end
-  HAL_SAI_Transmit_DMA(&hsai_BlockA1,
-                        (uint8_t *)AudioBuffer,
-                        AUDIO_BUFFER_SAMPLES * 2);  // total int16_t count
-  tlv3100_unmute(&hi2c3);
+ tlv3100_unmute(&hi2c3);
 
 
   /* USER CODE END 2 */
@@ -277,113 +261,6 @@ void HAL_SAI_TxCpltCallback(SAI_HandleTypeDef *hsai)
 {
     if (hsai->Instance == hsai_BlockA1.Instance)
         BufferReady[1] = 1;
-}
-
-static HAL_StatusTypeDef Audio_OpenFile(const char *path)
-{
-    FRESULT fr;
-    UINT bytesRead;
-    uint8_t header[WAV_HEADER_SIZE];
-
-    fr = f_open(&WavFile, path, FA_READ);
-    if (fr != FR_OK) {
-        printf("f_open failed: %d\r\n", fr);
-        return HAL_ERROR;
-    }
-
-    // Skip the 44-byte WAV header — you said format is guaranteed correct
-    fr = f_read(&WavFile, header, WAV_HEADER_SIZE, &bytesRead);
-    if (fr != FR_OK || bytesRead != WAV_HEADER_SIZE) {
-        printf("Header read failed\r\n");
-        f_close(&WavFile);
-        return HAL_ERROR;
-    }
-
-    return HAL_OK;
-}
-
-// Read one buffer-worth of PCM from the file into AudioBuffer[bufIdx]
-// Zeros the remainder if we hit EOF (clean end of track)
-static void Audio_FillBuffer(uint8_t bufIdx)
-{
-    UINT bytesRead = 0;
-    uint32_t bytesToRead = AUDIO_BUFFER_SAMPLES * sizeof(int16_t);
-
-    FRESULT fr = f_read(&WavFile, AudioBuffer[bufIdx], bytesToRead, &bytesRead);
-
-    if (fr != FR_OK || bytesRead == 0) {
-        // EOF or error — silence the buffer and stop
-        memset(AudioBuffer[bufIdx], 0, bytesToRead);
-        PlaybackActive = 0;
-        return;
-    }
-
-    // Partial read at EOF — zero-pad the rest
-    if (bytesRead < bytesToRead) {
-        memset((uint8_t *)AudioBuffer[bufIdx] + bytesRead, 0, bytesToRead - bytesRead);
-        PlaybackActive = 0;  // will stop after this buffer drains
-    }
-}
-
-
-
-void Audio_Stop(void)
-{
-    PlaybackActive = 0;
-    HAL_SAI_DMAStop(&hsai_BlockA1);
-    f_close(&WavFile);
-    BufferReady[0] = 0;
-    BufferReady[1] = 0;
-    printf("Audio stopped\r\n");
-}
-
-void Audio_Pause(void)
-{
-    if (!PlaybackActive) return;
-    PlaybackActive = 0;
-    HAL_SAI_DMAStop(&hsai_BlockA1);
-    // file stays open, f_tell() holds our position
-    printf("Audio paused at byte %lu\r\n", f_tell(&WavFile));
-}
-
-void Audio_Resume(void)
-{
-    if (PlaybackActive) return;
-
-    // Refill both buffers from current file position and restart DMA
-    Audio_FillBuffer(0);
-    Audio_FillBuffer(1);
-    BufferReady[0] = 0;
-    BufferReady[1] = 0;
-    PlaybackActive = 1;
-    HAL_SAI_Transmit_DMA(&hsai_BlockA1,
-                          (uint8_t *)AudioBuffer,
-                          AUDIO_BUFFER_SAMPLES * 2);
-    printf("Audio resumed\r\n");
-}
-
-
-HAL_StatusTypeDef Audio_Play(const char *path)
-{
-    if (PlaybackActive) Audio_Stop();
-    if (FileIsOpen) {          // <-- use flag instead of f_is_open
-        f_close(&WavFile);
-        FileIsOpen = 0;
-    }
-
-    if (Audio_OpenFile(path) != HAL_OK) return HAL_ERROR;
-
-    Audio_FillBuffer(0);
-    Audio_FillBuffer(1);
-    BufferReady[0] = 0;
-    BufferReady[1] = 0;
-    PlaybackActive = 1;
-
-    HAL_SAI_Transmit_DMA(&hsai_BlockA1,
-                          (uint8_t *)AudioBuffer,
-                          AUDIO_BUFFER_SAMPLES * 2);
-    printf("Playing: %s\r\n", path);
-    return HAL_OK;
 }
 
 
