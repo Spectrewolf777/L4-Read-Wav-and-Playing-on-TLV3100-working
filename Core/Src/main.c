@@ -182,6 +182,7 @@ int main(void)
   HAL_SAI_Transmit_DMA(&hsai_BlockA1,
                         (uint8_t *)AudioBuffer,
                         AUDIO_BUFFER_SAMPLES * 2);  // total int16_t count
+  tlv3100_unmute(&hi2c3);
 
 
   /* USER CODE END 2 */
@@ -208,6 +209,7 @@ int main(void)
         HAL_SAI_DMAStop(&hsai_BlockA1);
         f_close(&WavFile);
         printf("Playback done\r\n");
+        tlv3100_mute(&hi2c3);
         while (1);  // halt or loop/reload next file here
     }
   }

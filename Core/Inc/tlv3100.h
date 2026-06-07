@@ -22,7 +22,8 @@ static uint8_t current_page = 0xFF;
 void DAC3100_Init(I2C_HandleTypeDef *hi2c);
 void DAC3100_SetPage(I2C_HandleTypeDef *hi2c, uint8_t page);
 void DAC3100_WriteRegister(I2C_HandleTypeDef *hi2c, uint8_t reg, uint8_t data);
-
+void tlv3100_mute(I2C_HandleTypeDef *hi2c);
+void tlv3100_unmute(I2C_HandleTypeDef *hi2c);
 #ifdef __cplusplus
 }
 #endif

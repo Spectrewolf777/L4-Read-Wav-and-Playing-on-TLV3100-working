@@ -135,5 +135,25 @@ void DAC3100_Init(I2C_HandleTypeDef *hi2c)
     DAC3100_WriteRegister(hi2c, 0x42, 0xD4); // DAC Right gain = -22 dB
 
     // (c) Unmute digital volume control
-    DAC3100_WriteRegister(hi2c, 0x40, 0x00); // Unmute DAC left and right channels
+    //DAC3100_WriteRegister(hi2c, 0x40, 0x00); // Unmute DAC left and right channels
+}
+
+
+
+
+void tlv3100_mute(I2C_HandleTypeDef *hi2c) {
+    // 1. Ensure you are on Page 0 
+    DAC3100_SetPage(hi2c, 0);
+
+    // 2. Mute both left and right DAC channels
+    // 0x0C binary is 0000 1100 (Bit 3 = Left Mute, Bit 2 = Right Mute)
+    DAC3100_WriteRegister(hi2c, 0x40, 0x0C); 
+}
+
+void tlv3100_unmute(I2C_HandleTypeDef *hi2c) {
+    // 1. Ensure you are on Page 0
+    DAC3100_SetPage(hi2c, 0);
+
+    // 2. Unmute both channels
+    DAC3100_WriteRegister(hi2c, 0x40, 0x00); 
 }
